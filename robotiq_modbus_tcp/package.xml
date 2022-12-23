@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<package format="2">
+<package format="3">
   <name>robotiq_modbus_tcp</name>
   <version>1.0.0</version>
   <description>A stack to communicate with Robotiq grippers using the Modbus TCP protocol</description>
@@ -10,6 +10,7 @@
 
   <buildtool_depend>catkin</buildtool_depend>
 
-  <depend>python-pymodbus</depend>
+  <depend condition="$ROS_PYTHON_VERSION == 2">python-pymodbus</depend>
+  <depend condition="$ROS_PYTHON_VERSION == 3">python3-pymodbus</depend>
   <depend>rospy</depend>
 </package>

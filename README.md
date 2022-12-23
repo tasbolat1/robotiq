@@ -1,3 +1,7 @@
+Forked from https://github.com/ros-industrial/robotiq
+
+[![CI](https://github.com/aitacnology/ext-robotiq/actions/workflows/main.yml/badge.svg)](https://github.com/aitacnology/ext-robotiq/actions/workflows/main.yml)
+
 # Robotiq
 
 ## Status
@@ -29,7 +33,7 @@ There are no up-to-date releases of these packages available from the ROS buildf
 
 [![support level: community](https://img.shields.io/badge/support%20level-community-lightgray.svg)](http://rosindustrial.org/news/2016/10/7/better-supporting-a-growing-ros-industrial-software-platform)
 
-Robotiq meta-package.  See the [ROS wiki][] page for more information. 
+Robotiq meta-package.  See the [ROS wiki][] page for more information.
 
 ## License
 

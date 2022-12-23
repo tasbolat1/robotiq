@@ -31,93 +31,96 @@
 # POSSIBILITY OF SUCH DAMAGE.
 #
 # Copyright (c) 2012, Robotiq, Inc.
-# Revision $Id$
+import rospy
+from robotiq_2f_gripper_control.msg._Robotiq2FGripper_robot_input import Robotiq2FGripper_robot_input
+from robotiq_2f_gripper_control.msg._Robotiq2FGripper_robot_output import Robotiq2FGripper_robot_output
+from sensor_msgs.msg import JointState
 
-"""@package docstring
-Module baseRobotiq2FGripper: defines a base class for handling command and status of the Robotiq 2F gripper.
 
-After being instanciated, a 'client' member must be added to the object. This client depends on the communication protocol used by the Gripper. As an example, the ROS node 'Robotiq2FGripperTcpNode.py' instanciate a robotiqbaseRobotiq2FGripper and adds a client defined in the module comModbusTcp.
-"""
+def clamp(val, _min, _max):
+    assert _max >= _min
+    return min(max(val, _min), _max)
 
-from   robotiq_2f_gripper_control.msg import _Robotiq2FGripper_robot_input  as inputMsg
-from   robotiq_2f_gripper_control.msg import _Robotiq2FGripper_robot_output as outputMsg
 
-class robotiqbaseRobotiq2FGripper:
-    """Base class (communication protocol agnostic) for sending commands and receiving the status of the Robotic 2F gripper"""
+def clamp_command(command):
+    # type: (Robotiq2FGripper_robot_output) ->  Robotiq2FGripper_robot_output
+    command.rACT = clamp(command.rACT, 0, 1)
+    command.rGTO = clamp(command.rGTO, 0, 1)
+    command.rATR = clamp(command.rATR, 0, 1)
+    command.rPR = clamp(command.rPR, 0, 255)
+    command.rSP = clamp(command.rSP, 0, 255)
+    command.rFR = clamp(command.rFR, 0, 255)
+    return command
 
-    def __init__(self):
 
-        #Initiate output message as an empty list
+class robotiqbaseRobotiq2FGripper(object):
+    def __init__(self, client):
         self.message = []
-
-        #Note: after the instantiation, a ".client" member must be added to the object
-
-    def verifyCommand(self, command):
-        """Function to verify that the value of each variable satisfy its limits."""
-    	   	
-   	#Verify that each variable is in its correct range
-   	command.rACT = max(0, command.rACT)
-   	command.rACT = min(1, command.rACT)
-   	
-   	command.rGTO = max(0, command.rGTO)
-   	command.rGTO = min(1, command.rGTO)
-
-   	command.rATR = max(0, command.rATR)
-   	command.rATR = min(1, command.rATR)
-   	
-   	command.rPR  = max(0,   command.rPR)
-   	command.rPR  = min(255, command.rPR)   	
-
-   	command.rSP  = max(0,   command.rSP)
-   	command.rSP  = min(255, command.rSP)   	
-
-   	command.rFR  = max(0,   command.rFR)
-   	command.rFR  = min(255, command.rFR) 
-   	
-   	#Return the modified command
-   	return command
+        self.client = client
+        self.seq = 0
+        self.status = None
 
     def refreshCommand(self, command):
-        """Function to update the command which will be sent during the next sendCommand() call."""
-    
-	#Limit the value of each variable
-    	command = self.verifyCommand(command)
-
-        #Initiate command as an empty list
+        # type: (Robotiq2FGripper_robot_output) ->  None
+        command = clamp_command(command)
         self.message = []
-
-        #Build the command with each output variable
-        #To-Do: add verification that all variables are in their authorized range
         self.message.append(command.rACT + (command.rGTO << 3) + (command.rATR << 4))
         self.message.append(0)
         self.message.append(0)
         self.message.append(command.rPR)
         self.message.append(command.rSP)
-        self.message.append(command.rFR)     
+        self.message.append(command.rFR)
 
     def sendCommand(self):
-        """Send the command to the Gripper."""    
-        
-        self.client.sendCommand(self.message)
+        self.client.write(self.message)
 
     def getStatus(self):
-        """Request the status from the gripper and return it in the Robotiq2FGripper_robot_input msg type."""
+        # type: () -> Robotiq2FGripper_robot_input
+        status = self.client.read(6)
 
-        #Acquire status from the Gripper
-        status = self.client.getStatus(6);
-
-        #Message to output
-        message = inputMsg.Robotiq2FGripper_robot_input()
-
-        #Assign the values to their respective variables
-        message.gACT = (status[0] >> 0) & 0x01;        
-        message.gGTO = (status[0] >> 3) & 0x01;
-        message.gSTA = (status[0] >> 4) & 0x03;
-        message.gOBJ = (status[0] >> 6) & 0x03;
-        message.gFLT =  status[2]
-        message.gPR  =  status[3]
-        message.gPO  =  status[4]
-        message.gCU  =  status[5]       
+        message = Robotiq2FGripper_robot_input()
+        message.gACT = (status[0] >> 0) & 0x01
+        message.gGTO = (status[0] >> 3) & 0x01
+        message.gSTA = (status[0] >> 4) & 0x03
+        message.gOBJ = (status[0] >> 6) & 0x03
+        message.gFLT = status[2]
+        message.gPR = status[3]
+        message.gPO = status[4]
+        message.gCU = status[5]
 
         return message
-        
+
+    def sendAndGet(self):
+        # type: () -> Robotiq2FGripper_robot_input
+        """ Read and write at the same time ... could be faster """
+        data_read = self.client.readwrite(self.message, 6)
+
+        if data_read is not None:
+            message = Robotiq2FGripper_robot_input()
+            message.gACT = (data_read[0] >> 0) & 0x01
+            message.gGTO = (data_read[0] >> 3) & 0x01
+            message.gSTA = (data_read[0] >> 4) & 0x03
+            message.gOBJ = (data_read[0] >> 6) & 0x03
+            message.gFLT = data_read[2]
+            message.gPR = data_read[3]
+            message.gPO = data_read[4]
+            message.gCU = data_read[5]
+            self.status = message
+            return message
+        return None
+
+    def get_joint_state(self):
+        self.seq += 1
+        js = JointState()
+        js.header.frame_id = ''
+        js.header.stamp = rospy.get_rostime()
+        js.header.seq = self.seq
+        if self.status is None:
+            return js
+
+        js.name = ['finger_joint']
+        # 0.7 is the close position for 0.140m gripper
+        js.position = [clamp((self.status.gPO - 3.0) / (230.0 - 3.0) * 0.7, 0, 0.7)]
+        js.velocity = [0]
+        js.effort = [0]
+        return js

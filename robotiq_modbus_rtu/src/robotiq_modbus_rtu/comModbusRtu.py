@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 # Software License Agreement (BSD License)
 #
 # Copyright (c) 2012, Robotiq, Inc.
@@ -35,65 +36,97 @@
 #
 # Modifed from the orginal comModbusTcp by Kelsey Hawkins @ Georgia Tech
 
+from __future__ import division, print_function
 
-
-"""@package docstring
-Module comModbusRtu: defines a class which communicates with Robotiq Grippers using the Modbus RTU protocol. 
-
-The module depends on pymodbus (http://code.google.com/p/pymodbus/) for the Modbus RTU client.
-"""
-
-from pymodbus.client.sync import ModbusSerialClient
 from math import ceil
 
-class communication:	
+import pymodbus.version
+import serial
+from packaging import version
+from pymodbus.client.sync import ModbusSerialClient
+from pymodbus.exceptions import ModbusIOException
 
-   def __init__(self):
-      self.client = None
-      
-   def connectToDevice(self, device):
-      """Connection to the client - the method takes the IP address (as a string, e.g. '192.168.1.11') as an argument."""
-      self.client = ModbusSerialClient(method='rtu',port=device,stopbits=1, bytesize=8, baudrate=115200, timeout=0.2)
-      if not self.client.connect():
-          print "Unable to connect to %s" % device
-          return False
-      return True
+# version 3.5 has set_low_latency_mode
+assert version.parse(serial.__version__) >= version.parse("3.5")
+# version 1.3.X has timeout bug
+assert version.parse(pymodbus.__version__) >= version.parse("2.0.0")
 
-   def disconnectFromDevice(self):
-      """Close connection"""
-      self.client.close()
 
-   def sendCommand(self, data):   
-      """Send a command to the Gripper - the method takes a list of uint8 as an argument. The meaning of each variable depends on the Gripper model (see support.robotiq.com for more details)"""
-      #make sure data has an even number of elements   
-      if(len(data) % 2 == 1):
-         data.append(0)
+# sudo stty -F /dev/ttyUSB0 -echo -echoe -echok
+# sudo stty -F /dev/ttyUSB0 raw
 
-      #Initiate message as an empty list
-      message = []
+class communication:
+    def __init__(self, port):
+        self.port = port
+        self.client = ModbusSerialClient(method='rtu', port=port, stopbits=1, bytesize=8, baudrate=115200, timeout=0.1)
 
-      #Fill message by combining two bytes in one register
-      for i in range(0, len(data)/2):
-         message.append((data[2*i] << 8) + data[2*i+1])
+    def connect(self):
+        if not self.client.connect():
+            print("[ERROR] Unable to connect to {}".format(self.port))
+            return False
 
-      #To do!: Implement try/except 
-      self.client.write_registers(0x03E8, message, unit=0x0009)
+        try:
+            self.client.socket.set_low_latency_mode(True)
+            print("{} set_low_latency_mode ok".format(self.port))
+        except Exception:
+            print("please run: setserial {} low_latency".format(self.port))
 
-   def getStatus(self, numBytes):
-      """Sends a request to read, wait for the response and returns the Gripper status. The method gets the number of bytes to read as an argument"""
-      numRegs = int(ceil(numBytes/2.0))
+        return True
 
-      #To do!: Implement try/except 
-      #Get status from the device
-      response = self.client.read_holding_registers(0x07D0, numRegs, unit=0x0009)
+    def disconnect(self):
+        self.client.close()
 
-      #Instantiate output as an empty list
-      output = []
+    def write(self, data):
+        if len(data) % 2 == 1:
+            data.append(0)
 
-      #Fill the output with the bytes in the appropriate order
-      for i in range(0, numRegs):
-         output.append((response.getRegister(i) & 0xFF00) >> 8)
-         output.append( response.getRegister(i) & 0x00FF)
-      
-      #Output the result
-      return output
+        message = []
+        for i in range(0, len(data) / 2):
+            message.append((data[2 * i] << 8) + data[2 * i + 1])
+
+        try:
+            self.client.write_registers(0x03E8, message, unit=0x0009)
+        except Exception as e:
+            return False
+        return True
+
+    def read(self, num_bytes):
+        num_regs = int(ceil(num_bytes / 2.0))
+
+        try:
+            response = self.client.read_holding_registers(0x07D0, num_regs, unit=0x0009)
+        except Exception as e:
+            return None
+
+        if response is None:
+            return None
+
+        output = []
+        for i in range(0, num_regs):
+            output.append((response.getRegister(i) & 0xFF00) >> 8)
+            output.append(response.getRegister(i) & 0x00FF)
+
+        return output
+
+    def readwrite(self, data, num_bytes):
+        num_regs = int(ceil(num_bytes / 2.0))
+
+        data_write = []
+        for i in range(0, int(len(data) / 2)):
+            data_write.append((data[2 * i] << 8) + data[2 * i + 1])
+
+        try:
+            rq = self.client.readwrite_registers(
+                unit=0x0009,
+                read_address=0x07D0, read_count=num_regs,
+                write_address=0x03E8, write_registers=data_write,
+            )
+            if not isinstance(rq, ModbusIOException):
+                data_read = []
+                for i in range(0, num_regs):
+                    data_read.append((rq.registers[i] & 0xFF00) >> 8)
+                    data_read.append(rq.registers[i] & 0x00FF)
+                return data_read
+        except Exception as e:
+            pass
+        return None
