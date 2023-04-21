@@ -98,8 +98,8 @@ Robotiq2FGripperActionServer::Robotiq2FGripperActionServer(const std::string& na
   as_.registerGoalCallback(boost::bind(&Robotiq2FGripperActionServer::goalCB, this));
   as_.registerPreemptCallback(boost::bind(&Robotiq2FGripperActionServer::preemptCB, this));
 
-  state_sub_ = nh_.subscribe("input", 1, &Robotiq2FGripperActionServer::analysisCB, this);
-  goal_pub_ = nh_.advertise<GripperOutput>("output", 1);
+  state_sub_ = nh_.subscribe("Robotiq2FGripperRobotInput", 1, &Robotiq2FGripperActionServer::analysisCB, this); // "input"
+  goal_pub_ = nh_.advertise<GripperOutput>("Robotiq2FGripperRobotOutput", 1); // "output" 
 
   as_.start();
 }
